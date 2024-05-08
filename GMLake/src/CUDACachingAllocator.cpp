@@ -24,7 +24,10 @@
 #include <c10/util/Backtrace.h>
 #include <unordered_map>
 #include <unordered_set>
-#include <c10/cuda/cuda_vmm_allocator.h>
+#include <iostream>
+
+#include <cuda_vmm_allocator.h>
+#include <gmlake.h>
 
 #include <cuda_runtime_api.h>
 #include <algorithm>
@@ -4065,11 +4068,11 @@ inline std::string format_size(uint64_t size) {
   return os.str();
 }
 
-namespace CudaMallocAsync {
-// If this is put in its own header file, it gets incorrectly renamed in HIPify.
-CUDAAllocator* allocator();
+// namespace CudaMallocAsync {
+// // If this is put in its own header file, it gets incorrectly renamed in HIPify.
+// CUDAAllocator* allocator();
 
-} // namespace CudaMallocAsync
+// } // namespace CudaMallocAsync
 
 struct BackendStaticInitializer {
   // Parses env for backend at load time, duplicating some logic from
@@ -4094,8 +4097,8 @@ struct BackendStaticInitializer {
         std::vector<std::string> kv(it2, end2);
         if (kv.size() >= 2) {
           if (kv[0] == "backend") {
-            if (kv[1] == "cudaMallocAsync")
-              return CudaMallocAsync::allocator();
+            // if (kv[1] == "cudaMallocAsync")
+            //   return CudaMallocAsync::allocator();
             if (kv[1] == "native")
               return &Native::allocator;
           }
@@ -4117,3 +4120,78 @@ BackendStaticInitializer backend_static_initializer;
 } // namespace CUDACachingAllocator
 } // namespace cuda
 } // namespace c10
+
+void* gmlake_malloc(size_t size, int device, cudaStream_t stream) {
+  #ifdef DEBUG
+    std::cout << "GMLake Malloc" << std::endl;
+  #endif
+  // 
+  return c10::cuda::CUDACachingAllocator::Native::allocator.raw_alloc_with_stream(size, stream);
+}
+
+void gmlake_free(void* ptr, size_t size, int device, cudaStream_t stream) {
+  #ifdef DEBUG
+    std::cout << "GMLake Free" << std::endl;
+  #endif
+  c10::cuda::CUDACachingAllocator::Native::allocator.raw_delete(ptr);
+}
+
+void gmlake_init(int device_count) {
+  #ifdef DEBUG
+    std::cout << "GMLake Initialize" << std::endl;
+  #endif
+  c10::cuda::CUDACachingAllocator::Native::allocator.init(device_count);
+}
+
+void gmlake_reset() {
+  #ifdef DEBUG
+    std::cout << "GMLake EmptyCache" << std::endl;
+  #endif
+  c10::cuda::CUDACachingAllocator::Native::allocator.emptyCache();
+}
+
+void gmlake_memory_fraction(double fraction, int device) {
+  #ifdef DEBUG
+    std::cout << "GMLake MemoryFraction" << std::endl;
+  #endif
+  c10::cuda::CUDACachingAllocator::Native::allocator.setMemoryFraction(fraction, device);
+}
+
+void* gmlake_base_alloc(void* ptr, size_t* size) {
+  #ifdef DEBUG
+    std::cout << "GMLake BaseAlloc" << std::endl;
+  #endif
+  return c10::cuda::CUDACachingAllocator::Native::allocator.getBaseAllocation(ptr, size);
+}
+
+void gmlake_record_stream(void* ptr, cudaStream_t stream) {
+  #ifdef DEBUG
+    std::cout << "GMLake RecordStream" << std::endl;
+  #endif
+
+  c10::DataPtr data_ptr = c10::DataPtr(ptr, c10::DeviceType::CUDA);
+
+  int device = -1;
+  C10_CUDA_CHECK(cudaGetDevice(&device));
+  c10::cuda::CUDAStream cuda_stream= c10::cuda::getStreamFromExternal(stream, device);
+
+  c10::cuda::CUDACachingAllocator::Native::allocator.recordStream(data_ptr, cuda_stream);
+}
+
+void gmlake_begin_allocate_to_pool(int device, c10::cuda::MempoolId_t mempool_id, bool(*filter)(cudaStream_t)) {
+  #ifdef DEBUG
+    std::cout << "GMLake Begin Allocate to Pool" << std::endl;
+  #endif
+}
+
+void gmlake_end_allocate_to_pool(int device, c10::cuda::MempoolId_t mempool_id) {
+  #ifdef DEBUG
+    std::cout << "GMLake End Allocate to Pool" << std::endl;
+  #endif
+}
+
+void gmlake_release_pool(int device, c10::cuda::MempoolId_t mempool_id) {
+  #ifdef DEBUG
+    std::cout << "GMLake Release Pool" << std::endl;
+  #endif
+}
